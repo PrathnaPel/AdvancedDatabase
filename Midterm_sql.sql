@@ -172,16 +172,25 @@ go
 drop view FUMAR_PATHS
 go
 
+drop function findDistance
+go
+
+create function findDistance(@x1 int, @x2 int, @y1 int, @y2 int)
+returns int as
+begin
+	return sqrt(square(@x2-@x1)+square(@y2-@y1))
+end
+go
+
 create view FUMAR_PATHS (StartSite, EndSite, Distance) as
     -- *** PART 1:
     -- Write this view such that every combination of sites
     -- Appear as (StartSite, EndSite, Distance), including the Original
     -- Position.  There should be 24.  Distance is the length
     -- of a line segment between the two points on a plane.
-    select 0, 0, 0 -- you should delete this line.
 go
 
-
+select * from FUMAR_PATHS
 
 drop procedure GET_SHORTEST_FUMAR_PATH
 go
