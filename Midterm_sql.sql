@@ -172,22 +172,23 @@ go
 drop view FUMAR_PATHS
 go
 
-drop function findDistance
-go
-
-create function findDistance(@x1 int, @x2 int, @y1 int, @y2 int)
-returns int as
-begin
-	return sqrt(square(@x2-@x1)+square(@y2-@y1))
-end
-go
-
 create view FUMAR_PATHS (StartSite, EndSite, Distance) as
     -- *** PART 1:
     -- Write this view such that every combination of sites
     -- Appear as (StartSite, EndSite, Distance), including the Original
-    -- Position.  There should be 24.  Distance is the length
+    -- Position.  There should be 20.  Distance is the length
     -- of a line segment between the two points on a plane.
+	------------------------------Modified--------------------------
+	-- cross join, and set condition where it shouldn't point to itself
+	-- At first, I thought that using sitenumber might be a good idea, 
+	-- but if I use string_split to retrive value to build 'ThePath' it doesn't guarantee the order
+	select 
+		concat(f.SiteName,' (',f.XCoordinate,', ',f.YCoordinate,')'), 
+		concat(fs.SiteName,' (',fs.XCoordinate,', ',fs.YCoordinate,')'), 
+		sqrt(square(fs.XCoordinate-f.XCoordinate)+square(fs.YCoordinate-f.YCoordinate))
+	from FUMAR_SITES as f 
+	cross join FUMAR_SITES as fs
+	where f.SiteNumber != fs.SiteNumber
 go
 
 select * from FUMAR_PATHS
@@ -200,8 +201,86 @@ as begin
     -- *** PART 2:
     -- Write this procedure so it calculates the shortest past from the
     -- Original Position to ALL nodes (but not back).
-    
-    select -1 Distance, -- you should delete this line...
-           'Original Position (0,0) --> And Then Some Places (??, ??)' ThePath -- ... and this one.
+    -------------------Modified------------------------------
+	-- Use '/' as separator
+	-- ReachableSites will generate all possible paths it can take
+	declare @sitesCount int = (select count(*) from FUMAR_SITES)
+	;with ReachableSites as (
+		select EndSite, 1 Hops, Distance, convert(varchar(max),StartSite+'/' +EndSite) thePath from FUMAR_PATHS where StartSite = 'Original Position (0, 0)'
+		union all
+		select FP.EndSite, R.Hops+1, R.Distance+FP.Distance, convert(varchar(max),thePath+'/'+FP.EndSite) from ReachableSites R, FUMAR_PATHS FP
+		where R.EndSite = FP.StartSite
+		and R.Hops < @sitesCount
+		and FP.EndSite not in(select value from string_split(thePath,'/'))
+	)
+	select top 1 cast(Distance as decimal(10,2)) as Distance, REPLACE(thePath,'/', ' --> ') ThePath
+	from ReachableSites
+	-- Must traverse all nodes
+	where @sitesCount = (select count(*) from string_split(thePath,'/'))
+	order by Distance
 end
 go
+
+exec GET_SHORTEST_FUMAR_PATH
+go
+
+---------------------------EXTRA CREDIT----------------------
+/*
+* 2 points - make a procedure "GENERATE_N_FUMAR_SITES (@siteCount int)" which creates @siteCount 
+  sites in the underlying table instead of 4
+* 5 points - validate that GET_SHORTEST_FUMAR_PATHS works for @siteCount sites, instead of 4
+* 3 points - (as text in this file) record how long it takes for GET_SHORTEST_FUMAR_PATHS to 
+  run on a variety of site of counts.  Are the results as you expected?  Why or why not?
+*/
+
+drop procedure GENERATE_N_FUMAR_SITES
+go
+
+create procedure GENERATE_N_FUMAR_SITES (@siteCount int)
+as begin
+    delete from FUMAR_SITES
+
+    insert into FUMAR_SITES select 0, 'Original Position', 0, 0
+
+    declare @siteNumber int
+    set @siteNumber = 1
+	-- changed 4 to @siteCount
+    while @siteNumber <= @siteCount begin
+        insert into FUMAR_SITES 
+        select @siteNumber, 'Site #' + convert(nvarchar, @siteNumber),
+               100 - floor(rand()*200), 100 - floor(rand()*200)
+        
+        set @siteNumber = @siteNumber + 1
+    end
+end
+go
+
+exec GENERATE_N_FUMAR_SITES 5
+--exec GENERATE_N_FUMAR_SITES 1
+--exec GENERATE_N_FUMAR_SITES 8
+--exec GENERATE_N_FUMAR_SITES 9
+--exec GENERATE_N_FUMAR_SITES 10
+go
+
+------ Validate-----------
+exec GET_SHORTEST_FUMAR_PATH
+go
+/* Result
+Distance                                ThePath
+--------------------------------------- -------------------------------------------------------------------------------------------------------------------------------------------
+321.15                                  Original Position (0, 0) --> Site #4 (71, -18) --> Site #2 (-39, 11) --> Site #1 (-29, 52) --> Site #3 (-56, 44) --> Site #5 (-98, 92)
+
+(1 row affected)
+*/
+
+/*
+-- Conclusion
+Sitecount = 5 , instant
+Sitecount = 1 , instant
+Sitecount = 8 , 23 seconds
+Sitecount = 9 , 6 minutes 36 seconds
+Sitecount = 10, takes too long. Terminated at 10 minutes 11 seconds
+I expected to computation time to increase but I didn't expect it to increase that much.
+The different between sitecount 8 and 9 is 6 minutes, and I think it's even bigger between 9 and 10.
+As you have said, this algorithm has the time complxity of O(n!) which would explain such growth.
+*/
