@@ -1,0 +1,28 @@
+[{$facet: {
+  target: [{$match:{_id:"06430"}},{$project:{loc:1}}],
+  input: []
+}}, {$unwind: {
+  path: '$input',
+  preserveNullAndEmptyArrays: true
+}}, {$addFields: {
+longitude: {$first:"$input.loc"},
+latitude: {$last:"$input.loc"},
+degreediff:{
+    $sqrt:{
+      $add: [
+              {$pow:[{$subtract:[{$first:{$first:"$target.loc"}},{$first:"$input.loc"}]},2]},
+              {$pow:[{$subtract:[{$last:{$first:"$target.loc"}},{$last:"$input.loc"}]},2]}
+      ]
+    }
+  }
+}}, {$match: {
+  degreediff:{$lte:2}
+}}, {$replaceRoot: {
+  newRoot: '$input'
+}}, {$sort: {
+  pop: -1
+}}, {$project: {
+  city:1,
+  state:1,
+  pop:1
+}}]
